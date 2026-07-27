@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""CC Switch 用量桌面悬浮窗 v1.1.0
+"""CC Switch 用量桌面悬浮窗 v1.3.0
 
-单窗口:用量表格(近24h/本月)+ 时间范围可切换柱状图(1h/24h/7d)+ 设置页面。
-只读 ~/.cc-switch/cc-switch.db。配置持久化 ~/.ccswitch-widget/settings.json。
-拖动=左键按住拖;右键=菜单(刷新/设置/退出);Esc=退出。
+单窗口:用量表格(近24h/本月)+ 花费 K 线图(5m/15m/30m/1h/24h/7d)+ 设置页面。
+K 线 OHLC = 每桶内请求花费的首/最大/最小/末。只读 ~/.cc-switch/cc-switch.db。
 """
 import sqlite3, os, datetime, sys, json
+from collections import defaultdict
 import tkinter as tk
 from tkinter import ttk
 
-__version__ = "1.1.0"
+__version__ = "1.3.0"
 
 DB = os.path.expanduser("~/.cc-switch/cc-switch.db")
 CONFIG_DIR = os.path.expanduser("~/.ccswitch-widget")
@@ -22,12 +22,15 @@ THEMES = {
     "Nord":  {"bg":"#2e3440","surface":"#3b4252","text":"#d8dee9","sub":"#a3b1c2","dim":"#7b8497","green":"#a3be8c","yellow":"#ebcb8b","red":"#bf616a","blue":"#81a1c1","mauve":"#b48ead","teal":"#8fbcbb"},
 }
 
-DEFAULT_CONFIG = {"refresh_ms":30000, "alpha":0.95, "theme":"Mocha", "default_range":"24h", "win_w":440, "win_h":680}
+DEFAULT_CONFIG = {"refresh_ms":30000, "alpha":0.95, "theme":"Mocha", "default_range":"24h", "win_w":440, "win_h":700}
 
 RANGES = {
-    "1h":  {"seconds":3600,   "bucket":300,   "n":12, "label":"1h"},
-    "24h": {"seconds":86400,  "bucket":3600,  "n":24, "label":"24h"},
-    "7d":  {"seconds":604800, "bucket":86400, "n":7,  "label":"7d"},
+    "5m":  {"seconds":300,   "bucket":30,    "n":10, "label":"5m"},
+    "15m": {"seconds":900,   "bucket":60,    "n":15, "label":"15m"},
+    "30m": {"seconds":1800,  "bucket":120,   "n":15, "label":"30m"},
+    "1h":  {"seconds":3600,  "bucket":300,   "n":12, "label":"1h"},
+    "24h": {"seconds":86400, "bucket":3600,  "n":24, "label":"24h"},
+    "7d":  {"seconds":604800,"bucket":86400, "n":7,  "label":"7d"},
 }
 
 TOK_EXPR = "input_tokens+output_tokens+cache_read_tokens+cache_creation_tokens"
@@ -102,9 +105,8 @@ def query(range_key):
     rg = RANGES[range_key]
     start = now_ts - rg["seconds"]
     chart_rows = con.execute(
-        f"SELECT (? - created_at)/{rg['bucket']} b, {GRP} g, "
-        "ROUND(SUM(CAST(total_cost_usd AS REAL)),4) "
-        "FROM proxy_request_logs WHERE created_at>=? GROUP BY 1,2", (now_ts, start)).fetchall()
+        f"SELECT (? - created_at)/{rg['bucket']} b, CAST(total_cost_usd AS REAL) cost "
+        "FROM proxy_request_logs WHERE created_at>=? ORDER BY b, created_at", (now_ts, start)).fetchall()
     cur = con.execute(
         "SELECT app_type, name FROM providers WHERE is_current=1 "
         "AND app_type IN ('claude','codex') ORDER BY app_type").fetchall()
@@ -113,13 +115,20 @@ def query(range_key):
         "LEFT JOIN providers p ON l.provider_id=p.id AND l.app_type=p.app_type "
         "ORDER BY l.created_at DESC LIMIT 1").fetchone()
     con.close()
-    buckets = [{"Claude": 0.0, "Codex": 0.0} for _ in range(rg["n"])]
-    for b, g, c in chart_rows:
+    per = defaultdict(list)
+    for b, cost in chart_rows:
         if b is not None and 0 <= b < rg["n"]:
-            idx = rg["n"] - 1 - b
-            buckets[idx][g] += (c or 0.0)
+            per[int(b)].append(cost or 0.0)
+    candles = []
+    for i in range(rg["n"]):
+        b = rg["n"] - 1 - i
+        cs = per.get(b, [])
+        if cs:
+            candles.append((cs[0], max(cs), min(cs), cs[-1]))
+        else:
+            candles.append((0.0, 0.0, 0.0, 0.0))
     return dict(today=today_total, today_rows=today_rows, month=month_total,
-                month_rows=month_rows, buckets=buckets, range_key=range_key,
+                month_rows=month_rows, candles=candles, range_key=range_key,
                 providers=cur, latest=latest)
 
 
@@ -178,18 +187,19 @@ class UsageTable:
         tk.Label(row, text=f"${cost or 0:.2f}", fg=cost_color(cost or 0, t), bg=t["bg"], font=(F, 8)).pack(side="right")
 
 
-class BarChart:
+class CandleChart:
+    """花费 K 线图:每桶 OHLC = 桶内请求花费的首/最大/最小/末。涨红跌绿,当前黄框。"""
     def __init__(self, parent, theme):
         self.t = theme
         wrap = tk.Frame(parent, bg=theme["bg"])
         wrap.pack(fill="x", padx=14, pady=(4, 0))
-        self.canvas = tk.Canvas(wrap, bg=theme["bg"], highlightthickness=0, height=150)
+        self.canvas = tk.Canvas(wrap, bg=theme["bg"], highlightthickness=0, height=160)
         self.canvas.pack(fill="x", pady=(2, 0))
         self.canvas.bind("<Configure>", lambda e: self.draw())
-        self.buckets, self.range_key = [], "24h"
+        self.candles, self.range_key = [], "24h"
 
-    def update(self, buckets, range_key):
-        self.buckets, self.range_key = buckets, range_key
+    def update(self, candles, range_key):
+        self.candles, self.range_key = candles, range_key
         self.draw()
 
     def draw(self):
@@ -200,33 +210,59 @@ class BarChart:
         h = c.winfo_height()
         if w < 50 or h < 50:
             return
-        ml, mb, mt, mr = 34, 16, 6, 8
+        ml, mb, mt, mr = 40, 16, 20, 8
         cw = w - ml - mr
         ch = h - mt - mb
         base_y = mt + ch
-        n = len(self.buckets) or 1
-        max_c = max((b["Claude"] + b["Codex"] for b in self.buckets), default=0.0)
-        max_c = max(max_c, 0.01)
+        n = len(self.candles) or 1
+        max_h = max((cd[1] for cd in self.candles), default=0.0)
+        max_h = max(max_h, 0.0001)
         bw = cw / n
-        c.create_text(ml - 4, mt, text=f"${max_c:.2f}", fill=t["dim"], font=(F, 7), anchor="ne")
+        body_w = max(2, bw / 3)
+        # 网格
+        for i in range(1, 4):
+            y = mt + ch * i // 4
+            c.create_line(ml, y, ml + cw, y, fill=t["surface"], dash=(1, 3))
+        # Y 标签
+        c.create_text(ml - 4, mt, text=f"${max_h:.4f}", fill=t["dim"], font=(F, 7), anchor="ne")
         c.create_text(ml - 4, base_y, text="$0", fill=t["dim"], font=(F, 7), anchor="se")
-        c.create_line(ml, base_y, ml + cw, base_y, fill=t["surface"])
-        bk = RANGES[self.range_key]["bucket"]
-        unit = "m" if bk < 3600 else ("h" if bk < 86400 else "d")
-        div = 60 if unit == "m" else (3600 if unit == "h" else 86400)
-        step = max(1, n // 6)
-        for i, b in enumerate(self.buckets):
-            x = ml + i * bw
-            cl = b["Claude"]
-            co = b["Codex"]
-            chh = cl / max_c * ch
-            coh = co / max_c * ch
-            if chh > 0:
-                c.create_rectangle(x + 1, base_y - chh, x + bw - 1, base_y, fill=t["mauve"], outline="")
-            if coh > 0:
-                c.create_rectangle(x + 1, base_y - chh - coh, x + bw - 1, base_y - chh, fill=t["teal"], outline="")
+        c.create_text(ml - 4, mt + ch // 2, text=f"${max_h/2:.4f}", fill=t["dim"], font=(F, 7), anchor="e")
+        # 涨跌幅(最后 close vs 第一 close)
+        if len(self.candles) >= 2:
+            first_c = self.candles[0][3]
+            last_c = self.candles[-1][3]
+            if first_c > 0:
+                change = (last_c - first_c) / first_c * 100
+                arrow = "▲" if change >= 0 else "▼"
+                color = t["red"] if change >= 0 else t["green"]
+                c.create_text(ml + cw, 8, text=f"{arrow} {abs(change):.1f}%", fill=color, font=(F, 8, "bold"), anchor="ne")
+            else:
+                c.create_text(ml + cw, 8, text="- 0.0%", fill=t["dim"], font=(F, 8), anchor="ne")
+        # K 线
+        for i, (o, hi, lo, cl) in enumerate(self.candles):
+            x = ml + i * bw + bw / 2
+            y_h = base_y - hi / max_h * ch
+            y_l = base_y - lo / max_h * ch
+            y_o = base_y - o / max_h * ch
+            y_c = base_y - cl / max_h * ch
+            color = t["red"] if cl >= o else t["green"]
+            # 影线
+            c.create_line(x, y_h, x, y_l, fill=color, width=1)
+            # 实体
+            top = min(y_o, y_c)
+            bot = max(y_o, y_c)
+            if bot - top < 2:
+                bot = top + 2
+            c.create_rectangle(x - body_w, top, x + body_w, bot, fill=color, outline=color)
+            # 当前 K 线黄框
             if i == n - 1:
-                c.create_rectangle(x, mt, x + bw, base_y, outline=t["yellow"], width=1)
+                c.create_rectangle(x - bw / 2, y_h - 3, x + bw / 2, y_l + 3, outline=t["yellow"], width=1)
+        # X 标签
+        bk = RANGES[self.range_key]["bucket"]
+        unit = "s" if bk < 60 else ("m" if bk < 3600 else ("h" if bk < 86400 else "d"))
+        div = 1 if unit == "s" else (60 if unit == "m" else (3600 if unit == "h" else 86400))
+        step = max(1, n // 6)
+        for i in range(n):
             if i == n - 1:
                 lbl = "now"
             elif i % step == 0:
@@ -234,7 +270,7 @@ class BarChart:
             else:
                 lbl = None
             if lbl:
-                c.create_text(x + bw / 2, base_y + 8, text=lbl, fill=t["dim"], font=(F, 7))
+                c.create_text(ml + i * bw + bw / 2, base_y + 8, text=lbl, fill=t["dim"], font=(F, 7))
 
 
 class SettingsWindow:
@@ -245,8 +281,11 @@ class SettingsWindow:
         win = tk.Toplevel(parent)
         win.title("设置")
         win.configure(bg=t["bg"])
-        win.geometry("340x320")
+        win.geometry("340x340")
         win.transient(parent)
+        win.wm_attributes("-topmost", True)
+        win.lift()
+        win.focus_force()
         win.grab_set()
         self.win = win
 
@@ -326,16 +365,16 @@ class App:
 
         rbtn = tk.Frame(self.body, bg=t["bg"])
         rbtn.pack(fill="x", padx=14, pady=(4, 0))
-        tk.Label(rbtn, text="花费趋势", fg=t["dim"], bg=t["bg"], font=(F, 8, "bold")).pack(side="left")
+        tk.Label(rbtn, text="花费 K 线", fg=t["dim"], bg=t["bg"], font=(F, 8, "bold")).pack(side="left")
         self.range_buttons = {}
         for key in RANGES:
             active = (key == self.range_key)
             b = tk.Button(rbtn, text=RANGES[key]["label"], command=lambda k=key: self.set_range(k),
                           bg=t["mauve"] if active else t["surface"], fg=t["bg"] if active else t["sub"],
-                          relief="flat", font=(F, 8, "bold"), padx=8, bd=0)
-            b.pack(side="right", padx=2)
+                          relief="flat", font=(F, 7, "bold"), padx=5, bd=0)
+            b.pack(side="right", padx=1)
             self.range_buttons[key] = b
-        self.chart = BarChart(self.body, t)
+        self.chart = CandleChart(self.body, t)
         self._sep(self.body, (6, 0))
 
         self.api_label = tk.Label(self.body, text="", fg=t["dim"], bg=t["bg"], font=(F, 8), anchor="w")
@@ -344,10 +383,8 @@ class App:
         self.latest.pack(fill="x", padx=14, pady=(2, 4))
         leg = tk.Frame(self.body, bg=t["bg"])
         leg.pack(fill="x", padx=14, pady=(0, 8))
-        tk.Label(leg, text="●", fg=t["mauve"], bg=t["bg"], font=(F, 8)).pack(side="left")
-        tk.Label(leg, text="Claude", fg=t["dim"], bg=t["bg"], font=(F, 8)).pack(side="left", padx=(2, 8))
-        tk.Label(leg, text="●", fg=t["teal"], bg=t["bg"], font=(F, 8)).pack(side="left")
-        tk.Label(leg, text="Codex", fg=t["dim"], bg=t["bg"], font=(F, 8)).pack(side="left", padx=(2, 8))
+        tk.Label(leg, text="█涨", fg=t["red"], bg=t["bg"], font=(F, 8)).pack(side="left")
+        tk.Label(leg, text="█跌", fg=t["green"], bg=t["bg"], font=(F, 8)).pack(side="left", padx=(4, 8))
         tk.Label(leg, text="▢", fg=t["yellow"], bg=t["bg"], font=(F, 8)).pack(side="left")
         tk.Label(leg, text="当前", fg=t["dim"], bg=t["bg"], font=(F, 8)).pack(side="left", padx=(2, 0))
 
@@ -404,7 +441,7 @@ class App:
             return
         self.today.update(d["today"], d["today_rows"])
         self.month.update(d["month"], d["month_rows"])
-        self.chart.update(d["buckets"], d["range_key"])
+        self.chart.update(d["candles"], d["range_key"])
         api = " · ".join(n for _, n in d["providers"]) if d["providers"] else ""
         self.api_label.config(text="API: " + api if api else "")
         l = d["latest"]

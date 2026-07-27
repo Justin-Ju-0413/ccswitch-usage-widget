@@ -1,12 +1,14 @@
 # CC Switch 用量 Widget
 
-桌面悬浮窗,可视化 [CC Switch](https://github.com/farion1231/cc-switch) 记录的 AI 用量:近 24h / 本月 Token 与花费(按 Claude / Codex 分项)+ 时间范围可切换的花费柱状图 + 内置设置页面。
+桌面悬浮窗,可视化 [CC Switch](https://github.com/farion1231/cc-switch) 记录的 AI 用量:近 24h / 本月 Token 与花费(按 Claude / Codex 分项)+ 花费 K 线图 + 内置设置页面。
 
 ## 功能
 
 - **用量表格**:近 24h + 本月,两级层次(agent 第一级,具体 model 第二级),显示 Token 和花费
-- **花费柱状图**:**1h / 24h / 7d 三档可切换**,按 5 分钟 / 1 小时 / 1 天分桶,Claude(紫)/ Codex(青)堆叠,**当前时刻黄边框高亮**
-- **设置页面**:右键 -> 设置,可调刷新间隔、窗口透明度、主题、默认时间范围,持久化到 `~/.ccswitch-widget/settings.json`
+- **花费 K 线图**:**5m / 15m / 30m / 1h / 24h / 7d** 六档可切换
+  - 每根 K 线 = 一个时间桶,OHLC = 桶内请求花费的首 / 最大 / 最小 / 末
+  - 涨红跌绿(A 股风格),当前 K 线黄框,右上角涨跌幅 ▲▼,网格 + Y 轴 4 位小数
+- **设置页面**:右键 -> 设置,刷新间隔 / 透明度 / 主题 / 默认范围,持久化到 `~/.ccswitch-widget/settings.json`
 - **3 套主题**:Catppuccin Mocha(深)/ Latte(浅)/ Nord
 - **桌面常驻**:置顶 + 半透明 + 无边框,可拖动,支持开机自启
 - **花费预警**:金额随阈值变色(绿 < $20 / 黄 $20–50 / 红 ≥ $50)
@@ -25,12 +27,14 @@
 python ccswitch_widget.py
 ```
 
+也可用 PyInstaller 打包成单 exe(`pyinstaller --onefile --noconsole ccswitch_widget.py`)。
+
 ## 使用
 
 | 操作 | 方法 |
 |---|---|
 | 移动窗口 | 鼠标按住左键拖动 |
-| 切换柱状图范围 | 点击柱状图上方 1h / 24h / 7d 按钮 |
+| 切换 K 线范围 | 点击 5m / 15m / 30m / 1h / 24h / 7d 按钮 |
 | 设置 | 右键 -> 设置(刷新间隔 / 透明度 / 主题 / 默认范围) |
 | 刷新 | 右键 -> 立即刷新(或等自动刷新) |
 | 退出 | 右键 -> 退出,或按 Esc |
@@ -54,7 +58,7 @@ powershell -ExecutionPolicy Bypass -File setup_autostart.ps1
   "theme": "Mocha",
   "default_range": "24h",
   "win_w": 440,
-  "win_h": 680
+  "win_h": 700
 }
 ```
 
@@ -62,7 +66,7 @@ powershell -ExecutionPolicy Bypass -File setup_autostart.ps1
 
 - 仅 Windows 测试通过(Segoe UI 字体;macOS/Linux 需改字体)
 - 依赖 CC Switch 记录的数据;未走代理或未同步会话日志的请求不统计
-- 「近 24h」为滚动 24 小时;「本月」为自然月
+- K 线 OHLC 基于单请求花费,值很小(0.00x 美元),幅度可能不大;「近 24h」为滚动 24 小时,「本月」为自然月
 
 ## License
 
