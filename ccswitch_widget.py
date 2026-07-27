@@ -9,7 +9,7 @@ from collections import defaultdict
 import tkinter as tk
 from tkinter import ttk
 
-__version__ = "1.3.0"
+__version__ = "1.4.0"
 
 DB = os.path.expanduser("~/.cc-switch/cc-switch.db")
 CONFIG_DIR = os.path.expanduser("~/.ccswitch-widget")
@@ -352,10 +352,11 @@ class App:
         self.body.pack(fill="both", expand=True, padx=1, pady=1)
 
         hdr = tk.Frame(self.body, bg=t["bg"])
-        hdr.pack(fill="x", padx=14, pady=(10, 4))
-        tk.Label(hdr, text=f"◆ CC Switch 用量  v{__version__}", fg=t["mauve"], bg=t["bg"], font=(F, 10, "bold")).pack(side="left")
+        hdr.pack(fill="x", padx=14, pady=(10, 2))
+        tk.Label(hdr, text="█ TokenTicker", fg=t["mauve"], bg=t["bg"], font=(F, 13, "bold")).pack(side="left")
         self.clock = tk.Label(hdr, text="", fg=t["dim"], bg=t["bg"], font=(F, 9))
         self.clock.pack(side="right")
+        tk.Label(self.body, text=f"你的 AI 用量行情终端  ·  v{__version__}", fg=t["dim"], bg=t["bg"], font=(F, 7)).pack(fill="x", padx=14, pady=(0, 4))
 
         self._sep(self.body, (4, 4))
         self.today = UsageTable(self.body, t, "近24h", 13)
