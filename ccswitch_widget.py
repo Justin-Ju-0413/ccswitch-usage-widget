@@ -5,7 +5,7 @@ from collections import defaultdict
 import customtkinter as ctk
 import tkinter as tk
 
-__version__ = "1.6.2"
+__version__ = "1.6.3"
 ctk.set_appearance_mode("dark")
 
 DB = os.path.expanduser("~/.cc-switch/cc-switch.db")
@@ -15,12 +15,12 @@ F = "Segoe UI"
 TRANSP = '#010101'
 
 THEMES = {
-    "Mocha": {"win":"#181825","card":"#1e1e2e","card2":"#313244","border":"#45475a","text":"#cdd6f4","sub":"#a6adc8","dim":"#6c7086","green":"#a6e3a1","yellow":"#f9e2af","red":"#f38ba8","blue":"#89b4fa","mauve":"#cba6f7","teal":"#94e2d5"},
-    "Latte": {"win":"#e6e9ef","card":"#eff1f5","card2":"#ccd0da","border":"#bcc0cc","text":"#4c4f69","sub":"#6c6f85","dim":"#9ca0b0","green":"#40a02b","yellow":"#df8e1d","red":"#d20f39","blue":"#1e66f5","mauve":"#8839ef","teal":"#179299"},
-    "Nord":  {"win":"#242933","card":"#2e3440","card2":"#3b4252","border":"#4c566a","text":"#d8dee9","sub":"#a3b1c2","dim":"#7b8497","green":"#a3be8c","yellow":"#ebcb8b","red":"#bf616a","blue":"#81a1c1","mauve":"#b48ead","teal":"#8fbcbb"},
+    "Mocha": {"win":"#181825","card":"#1e1e2e","card2":"#313244","border":"#45475a","text":"#ffffff","sub":"#c0c6e0","dim":"#9399b2","green":"#a6e3a1","yellow":"#f9e2af","red":"#f38ba8","blue":"#89b4fa","mauve":"#cba6f7","teal":"#94e2d5"},
+    "Latte": {"win":"#e6e9ef","card":"#eff1f5","card2":"#ccd0da","border":"#bcc0cc","text":"#000000","sub":"#4c4f69","dim":"#6c6f85","green":"#40a02b","yellow":"#df8e1d","red":"#d20f39","blue":"#1e66f5","mauve":"#8839ef","teal":"#179299"},
+    "Nord":  {"win":"#242933","card":"#2e3440","card2":"#3b4252","border":"#4c566a","text":"#ffffff","sub":"#c8d3e0","dim":"#9aa3b5","green":"#a3be8c","yellow":"#ebcb8b","red":"#bf616a","blue":"#81a1c1","mauve":"#b48ead","teal":"#8fbcbb"},
 }
 
-DEFAULT_CONFIG = {"refresh_ms":30000, "alpha":0.88, "theme":"Mocha", "default_range":"24h", "win_w":520, "win_h":1020}
+DEFAULT_CONFIG = {"refresh_ms":30000, "alpha":0.95, "theme":"Mocha", "default_range":"24h", "win_w":520, "win_h":1020}
 
 RANGES = {
     "5m":  {"seconds":300,   "bucket":30,    "n":10, "label":"5m"},
