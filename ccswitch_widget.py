@@ -9,7 +9,7 @@ from collections import defaultdict
 import customtkinter as ctk
 import tkinter as tk
 
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 ctk.set_appearance_mode("dark")
 
 DB = os.path.expanduser("~/.cc-switch/cc-switch.db")
@@ -344,8 +344,13 @@ class App:
         self._after_id = None
         root.overrideredirect(True)
         root.wm_attributes("-topmost", True)
-        root.wm_attributes("-alpha", cfg["alpha"])
-        root.configure(fg_color=self.theme["win"])
+        self.acrylic = try_acrylic(root)
+        if self.acrylic:
+            root.configure(fg_color=TRANSP)
+            root.wm_attributes("-transparentcolor", TRANSP)
+        else:
+            root.wm_attributes("-alpha", cfg["alpha"])
+            root.configure(fg_color=self.theme["win"])
         sw = root.winfo_screenwidth()
         root.geometry(f"{cfg['win_w']}x{cfg['win_h']}+{sw-cfg['win_w']-20}+20")
         self._build_ui()
@@ -361,7 +366,7 @@ class App:
         t = self.theme
         for w in self.root.winfo_children():
             w.destroy()
-        self.root.configure(fg_color=t["win"])
+        self.root.configure(fg_color=TRANSP if self.acrylic else t["win"])
 
         # 标题卡
         hc = self._card((10, 4))
@@ -446,7 +451,8 @@ class App:
         self.cfg = new_cfg
         self.theme = THEMES[new_cfg["theme"]]
         self.range_key = new_cfg["default_range"]
-        self.root.wm_attributes("-alpha", new_cfg["alpha"])
+        if not self.acrylic:
+            self.root.wm_attributes("-alpha", new_cfg["alpha"])
         self._build_ui()
         self.refresh()
         self._schedule()
@@ -488,6 +494,26 @@ class App:
 
     def do_drag(self, e):
         self.root.geometry(f"+{self._ox + e.x_root - self._sx}+{self._oy + e.y_root - self._sy}")
+
+
+TRANSP = '#010101'
+
+
+def try_acrylic(root):
+    """Windows 11 Acrylic 背景模糊。失败返回 False(回退半透明)。"""
+    try:
+        import ctypes
+        from ctypes import windll, byref, c_int, sizeof
+        root.update_idletasks()
+        hwnd = windll.user32.GetParent(root.winfo_id())
+        windll.dwmapi.DwmSetWindowAttribute(hwnd, 20, byref(c_int(1)), sizeof(c_int))  # dark mode
+        windll.dwmapi.DwmSetWindowAttribute(hwnd, 38, byref(c_int(1)), sizeof(c_int))  # DWMSBT_TRANSIENTWINDOW (Acrylic)
+        class MARGINS(ctypes.Structure):
+            _fields_ = [("cxLeftWidth", c_int), ("cxRightWidth", c_int), ("cyTopHeight", c_int), ("cyBottomHeight", c_int)]
+        windll.dwmapi.DwmExtendFrameIntoClientArea(hwnd, byref(MARGINS(-1, -1, -1, -1)))
+        return True
+    except Exception:
+        return False
 
 
 def main():
