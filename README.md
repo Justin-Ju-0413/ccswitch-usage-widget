@@ -17,7 +17,7 @@
   - 涨红跌绿(A 股风格),当前 K 线黄框,右上角涨跌幅 ▲▼,网格 + Y 轴 4 位小数
 - **用量表格**:近 24h + 本月,两级层次(agent 第一级,具体 model 第二级),Token + 花费
 - **设置页面**:右键 -> 设置,刷新间隔 / 透明度 / 主题 / 默认范围,持久化到 `~/.ccswitch-widget/settings.json`
-- **3 套主题**:Catppuccin Mocha(深)/ Latte(浅)/ Nord
+- **液态玻璃风格**:customtkinter 圆角卡片 + 半透明 + 亮边,Mocha(深)/ Latte(浅)/ Nord 三套主题
 - **桌面常驻**:置顶 + 半透明 + 无边框,可拖动,支持开机自启
 - **花费预警**:金额随阈值变色(绿 < $20 / 黄 $20–50 / 红 ≥ $50)
 
@@ -29,16 +29,17 @@
 
 ## 安装
 
-仅需 Python 3.8+(自带 tkinter,无需额外依赖)。
+需 Python 3.8+ 和 customtkinter。
 
 ```bash
+pip install customtkinter
 python ccswitch_widget.py
 ```
 
 也可打包成单 exe:
 
 ```bash
-pyinstaller --onefile --noconsole --name TokenTicker ccswitch_widget.py
+pyinstaller --onefile --noconsole --name TokenTicker --collect-all customtkinter ccswitch_widget.py
 ```
 
 ## 使用

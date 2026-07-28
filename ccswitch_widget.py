@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""CC Switch 用量桌面悬浮窗 v1.3.0
+"""TokenTicker v1.5.0 - 液态玻璃风格
 
-单窗口:用量表格(近24h/本月)+ 花费 K 线图(5m/15m/30m/1h/24h/7d)+ 设置页面。
-K 线 OHLC = 每桶内请求花费的首/最大/最小/末。只读 ~/.cc-switch/cc-switch.db。
+单窗口:用量表格 + 花费 K 线图 + 设置页面。customtkinter 圆角玻璃卡片。
+只读 ~/.cc-switch/cc-switch.db。配置持久化 ~/.ccswitch-widget/settings.json。
 """
 import sqlite3, os, datetime, sys, json
 from collections import defaultdict
+import customtkinter as ctk
 import tkinter as tk
-from tkinter import ttk
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
+ctk.set_appearance_mode("dark")
 
 DB = os.path.expanduser("~/.cc-switch/cc-switch.db")
 CONFIG_DIR = os.path.expanduser("~/.ccswitch-widget")
@@ -17,12 +18,12 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, "settings.json")
 F = "Segoe UI"
 
 THEMES = {
-    "Mocha": {"bg":"#1e1e2e","surface":"#313244","text":"#cdd6f4","sub":"#a6adc8","dim":"#6c7086","green":"#a6e3a1","yellow":"#f9e2af","red":"#f38ba8","blue":"#89b4fa","mauve":"#cba6f7","teal":"#94e2d5"},
-    "Latte": {"bg":"#eff1f5","surface":"#ccd0da","text":"#4c4f69","sub":"#6c6f85","dim":"#9ca0b0","green":"#40a02b","yellow":"#df8e1d","red":"#d20f39","blue":"#1e66f5","mauve":"#8839ef","teal":"#179299"},
-    "Nord":  {"bg":"#2e3440","surface":"#3b4252","text":"#d8dee9","sub":"#a3b1c2","dim":"#7b8497","green":"#a3be8c","yellow":"#ebcb8b","red":"#bf616a","blue":"#81a1c1","mauve":"#b48ead","teal":"#8fbcbb"},
+    "Mocha": {"win":"#181825","card":"#1e1e2e","card2":"#313244","border":"#45475a","text":"#cdd6f4","sub":"#a6adc8","dim":"#6c7086","green":"#a6e3a1","yellow":"#f9e2af","red":"#f38ba8","blue":"#89b4fa","mauve":"#cba6f7","teal":"#94e2d5"},
+    "Latte": {"win":"#e6e9ef","card":"#eff1f5","card2":"#ccd0da","border":"#bcc0cc","text":"#4c4f69","sub":"#6c6f85","dim":"#9ca0b0","green":"#40a02b","yellow":"#df8e1d","red":"#d20f39","blue":"#1e66f5","mauve":"#8839ef","teal":"#179299"},
+    "Nord":  {"win":"#242933","card":"#2e3440","card2":"#3b4252","border":"#4c566a","text":"#d8dee9","sub":"#a3b1c2","dim":"#7b8497","green":"#a3be8c","yellow":"#ebcb8b","red":"#bf616a","blue":"#81a1c1","mauve":"#b48ead","teal":"#8fbcbb"},
 }
 
-DEFAULT_CONFIG = {"refresh_ms":30000, "alpha":0.95, "theme":"Mocha", "default_range":"24h", "win_w":440, "win_h":700}
+DEFAULT_CONFIG = {"refresh_ms":30000, "alpha":0.88, "theme":"Mocha", "default_range":"24h", "win_w":440, "win_h":740}
 
 RANGES = {
     "5m":  {"seconds":300,   "bucket":30,    "n":10, "label":"5m"},
@@ -132,33 +133,40 @@ def query(range_key):
                 providers=cur, latest=latest)
 
 
+def _lbl(parent, text, theme, key, font, width=None, anchor="w", color=None):
+    c = color if color is not None else theme[key]
+    kw = dict(text=text, fg_color="transparent", text_color=c, font=font, anchor=anchor, height=20)
+    if width is not None:
+        kw["width"] = width
+    return ctk.CTkLabel(parent, **kw)
+
+
 class UsageTable:
     def __init__(self, parent, theme, title, big_font=13):
         self.t = theme
-        wrap = tk.Frame(parent, bg=theme["bg"])
-        wrap.pack(fill="x", padx=14, pady=(4, 0))
-        r = tk.Frame(wrap, bg=theme["bg"])
+        wrap = ctk.CTkFrame(parent, fg_color="transparent")
+        wrap.pack(fill="x", padx=12, pady=(6, 2))
+        r = ctk.CTkFrame(wrap, fg_color="transparent")
         r.pack(fill="x")
-        tk.Label(r, text=title, fg=theme["dim"], bg=theme["bg"], font=(F, 9), width=6, anchor="w").pack(side="left")
-        self.cost = tk.Label(r, text="$0.00", fg=theme["green"], bg=theme["bg"], font=(F, big_font, "bold"))
+        _lbl(r, title, theme, "dim", (F, 9), 50, "w").pack(side="left")
+        self.cost = _lbl(r, "$0.00", theme, "green", (F, big_font, "bold"))
         self.cost.pack(side="left")
-        self.tok = tk.Label(r, text="", fg=theme["blue"], bg=theme["bg"], font=(F, 9))
+        self.tok = _lbl(r, "", theme, "blue", (F, 9))
         self.tok.pack(side="right")
-        self.body = tk.Frame(wrap, bg=theme["bg"])
-        self.body.pack(fill="x", pady=(6, 0))
+        self.body = ctk.CTkFrame(wrap, fg_color="transparent")
+        self.body.pack(fill="x", pady=(4, 4))
 
     def update(self, total, rows):
         t = self.t
-        self.cost.config(text=f"${total[0] or 0:.2f}", fg=cost_color(total[0] or 0, t))
-        self.tok.config(text=fmt_tok(total[1]) + " tokens")
+        self.cost.configure(text=f"${total[0] or 0:.2f}", text_color=cost_color(total[0] or 0, t))
+        self.tok.configure(text=fmt_tok(total[1]) + " tokens")
         for w in self.body.winfo_children():
             w.destroy()
-        h = tk.Frame(self.body, bg=t["bg"])
-        h.pack(fill="x", pady=(0, 3))
-        tk.Label(h, text="", bg=t["bg"], width=2).pack(side="left")
-        tk.Label(h, text="名称", fg=t["dim"], bg=t["bg"], font=(F, 7), width=16, anchor="w").pack(side="left")
-        tk.Label(h, text="Token", fg=t["dim"], bg=t["bg"], font=(F, 7), width=8, anchor="e").pack(side="left", padx=(4, 0))
-        tk.Label(h, text="花费", fg=t["dim"], bg=t["bg"], font=(F, 7), anchor="e").pack(side="right")
+        h = ctk.CTkFrame(self.body, fg_color="transparent")
+        h.pack(fill="x", pady=(0, 2))
+        _lbl(h, "名称", t, "dim", (F, 7), 150, "w").pack(side="left")
+        _lbl(h, "Token", t, "dim", (F, 7), 70, "e").pack(side="left", padx=(4, 0))
+        _lbl(h, "花费", t, "dim", (F, 7), None, "e").pack(side="right")
         for agent in ("Claude", "Codex"):
             arows = [r for r in rows if r[0] == agent]
             ac = sum((r[2] or 0) for r in arows)
@@ -170,30 +178,27 @@ class UsageTable:
     def _agent_row(self, agent, tok, cost):
         t = self.t
         col = t["mauve"] if agent == "Claude" else t["teal"]
-        row = tk.Frame(self.body, bg=t["bg"])
+        row = ctk.CTkFrame(self.body, fg_color="transparent")
         row.pack(fill="x", pady=1)
-        tk.Label(row, text="●", fg=col, bg=t["bg"], font=(F, 8), width=2).pack(side="left")
-        tk.Label(row, text=agent, fg=t["text"], bg=t["bg"], font=(F, 9, "bold"), width=16, anchor="w").pack(side="left")
-        tk.Label(row, text=fmt_tok(tok), fg=t["sub"], bg=t["bg"], font=(F, 8), width=8, anchor="e").pack(side="left", padx=(4, 0))
-        tk.Label(row, text=f"${cost or 0:.2f}", fg=cost_color(cost or 0, t), bg=t["bg"], font=(F, 9, "bold")).pack(side="right")
+        _lbl(row, "● " + agent, t, None, (F, 9, "bold"), 150, "w", color=col).pack(side="left")
+        _lbl(row, fmt_tok(tok), t, "sub", (F, 8), 70, "e").pack(side="left", padx=(4, 0))
+        _lbl(row, f"${cost or 0:.2f}", t, None, (F, 9, "bold"), None, "e", color=cost_color(cost or 0, t)).pack(side="right")
 
     def _sub_row(self, model, tok, cost):
         t = self.t
-        row = tk.Frame(self.body, bg=t["bg"])
+        row = ctk.CTkFrame(self.body, fg_color="transparent")
         row.pack(fill="x", padx=(16, 0))
-        tk.Label(row, text="└", fg=t["dim"], bg=t["bg"], font=(F, 8), width=2).pack(side="left")
-        tk.Label(row, text=(model or "?")[:18], fg=t["sub"], bg=t["bg"], font=(F, 8), width=16, anchor="w").pack(side="left")
-        tk.Label(row, text=fmt_tok(tok), fg=t["dim"], bg=t["bg"], font=(F, 8), width=8, anchor="e").pack(side="left", padx=(4, 0))
-        tk.Label(row, text=f"${cost or 0:.2f}", fg=cost_color(cost or 0, t), bg=t["bg"], font=(F, 8)).pack(side="right")
+        _lbl(row, "└ " + (model or "?")[:16], t, "sub", (F, 8), 150, "w").pack(side="left")
+        _lbl(row, fmt_tok(tok), t, "dim", (F, 8), 70, "e").pack(side="left", padx=(4, 0))
+        _lbl(row, f"${cost or 0:.2f}", t, None, (F, 8), None, "e", color=cost_color(cost or 0, t)).pack(side="right")
 
 
 class CandleChart:
-    """花费 K 线图:每桶 OHLC = 桶内请求花费的首/最大/最小/末。涨红跌绿,当前黄框。"""
     def __init__(self, parent, theme):
         self.t = theme
-        wrap = tk.Frame(parent, bg=theme["bg"])
-        wrap.pack(fill="x", padx=14, pady=(4, 0))
-        self.canvas = tk.Canvas(wrap, bg=theme["bg"], highlightthickness=0, height=160)
+        wrap = ctk.CTkFrame(parent, fg_color="transparent")
+        wrap.pack(fill="x", padx=12, pady=(2, 6))
+        self.canvas = tk.Canvas(wrap, bg=theme["card"], highlightthickness=0, height=120)
         self.canvas.pack(fill="x", pady=(2, 0))
         self.canvas.bind("<Configure>", lambda e: self.draw())
         self.candles, self.range_key = [], "24h"
@@ -205,6 +210,7 @@ class CandleChart:
     def draw(self):
         c = self.canvas
         t = self.t
+        c.configure(bg=t["card"])
         c.delete("all")
         w = c.winfo_width()
         h = c.winfo_height()
@@ -219,15 +225,11 @@ class CandleChart:
         max_h = max(max_h, 0.0001)
         bw = cw / n
         body_w = max(2, bw / 3)
-        # 网格
         for i in range(1, 4):
             y = mt + ch * i // 4
-            c.create_line(ml, y, ml + cw, y, fill=t["surface"], dash=(1, 3))
-        # Y 标签
+            c.create_line(ml, y, ml + cw, y, fill=t["border"], dash=(1, 3))
         c.create_text(ml - 4, mt, text=f"${max_h:.4f}", fill=t["dim"], font=(F, 7), anchor="ne")
         c.create_text(ml - 4, base_y, text="$0", fill=t["dim"], font=(F, 7), anchor="se")
-        c.create_text(ml - 4, mt + ch // 2, text=f"${max_h/2:.4f}", fill=t["dim"], font=(F, 7), anchor="e")
-        # 涨跌幅(最后 close vs 第一 close)
         if len(self.candles) >= 2:
             first_c = self.candles[0][3]
             last_c = self.candles[-1][3]
@@ -238,7 +240,6 @@ class CandleChart:
                 c.create_text(ml + cw, 8, text=f"{arrow} {abs(change):.1f}%", fill=color, font=(F, 8, "bold"), anchor="ne")
             else:
                 c.create_text(ml + cw, 8, text="- 0.0%", fill=t["dim"], font=(F, 8), anchor="ne")
-        # K 线
         for i, (o, hi, lo, cl) in enumerate(self.candles):
             x = ml + i * bw + bw / 2
             y_h = base_y - hi / max_h * ch
@@ -246,18 +247,14 @@ class CandleChart:
             y_o = base_y - o / max_h * ch
             y_c = base_y - cl / max_h * ch
             color = t["red"] if cl >= o else t["green"]
-            # 影线
             c.create_line(x, y_h, x, y_l, fill=color, width=1)
-            # 实体
             top = min(y_o, y_c)
             bot = max(y_o, y_c)
             if bot - top < 2:
                 bot = top + 2
             c.create_rectangle(x - body_w, top, x + body_w, bot, fill=color, outline=color)
-            # 当前 K 线黄框
             if i == n - 1:
                 c.create_rectangle(x - bw / 2, y_h - 3, x + bw / 2, y_l + 3, outline=t["yellow"], width=1)
-        # X 标签
         bk = RANGES[self.range_key]["bucket"]
         unit = "s" if bk < 60 else ("m" if bk < 3600 else ("h" if bk < 86400 else "d"))
         div = 1 if unit == "s" else (60 if unit == "m" else (3600 if unit == "h" else 86400))
@@ -278,10 +275,9 @@ class SettingsWindow:
         self.cfg = dict(cfg)
         self.on_apply = on_apply
         t = theme
-        win = tk.Toplevel(parent)
-        win.title("设置")
-        win.configure(bg=t["bg"])
-        win.geometry("340x340")
+        win = ctk.CTkToplevel(parent, fg_color=t["win"])
+        win.title("TokenTicker 设置")
+        win.geometry("360x360")
         win.transient(parent)
         win.wm_attributes("-topmost", True)
         win.lift()
@@ -289,34 +285,48 @@ class SettingsWindow:
         win.grab_set()
         self.win = win
 
-        def row(label, widget_cls, **kw):
-            f = tk.Frame(win, bg=t["bg"])
-            f.pack(fill="x", padx=14, pady=8)
-            tk.Label(f, text=label, fg=t["text"], bg=t["bg"], font=(F, 9)).pack(side="left")
-            w = widget_cls(f, **kw)
-            w.pack(side="right")
-            return w
+        def card(parent):
+            f = ctk.CTkFrame(parent, fg_color=t["card"], corner_radius=12, border_width=1, border_color=t["border"])
+            f.pack(fill="x", padx=14, pady=6)
+            return f
 
-        self.refresh_var = tk.IntVar(value=cfg["refresh_ms"] // 1000)
-        row("刷新间隔(秒)", tk.Spinbox, from_=5, to=600, textvariable=self.refresh_var, width=6)
+        # 刷新间隔
+        c1 = card(win)
+        ctk.CTkLabel(c1, text="刷新间隔", fg_color="transparent", text_color=t["text"], font=(F, 10)).pack(side="left", padx=12, pady=10)
+        self.refresh_var = tk.StringVar(value=str(cfg["refresh_ms"] // 1000))
+        ctk.CTkOptionMenu(c1, variable=self.refresh_var, values=["5", "10", "30", "60", "120", "300"],
+                          fg_color=t["card2"], button_color=t["mauve"], text_color=t["text"],
+                          width=90, height=26).pack(side="right", padx=12, pady=8)
+        ctk.CTkLabel(c1, text="秒", fg_color="transparent", text_color=t["dim"], font=(F, 9)).pack(side="right", padx=(0, 12))
+
+        # 透明度
+        c2 = card(win)
+        ctk.CTkLabel(c2, text="透明度", fg_color="transparent", text_color=t["text"], font=(F, 10)).pack(side="left", padx=12, pady=10)
         self.alpha_var = tk.DoubleVar(value=cfg["alpha"])
-        sc = tk.Scale(win, from_=0.6, to=1.0, resolution=0.05, orient="horizontal",
-                      variable=self.alpha_var, bg=t["bg"], fg=t["text"], highlightthickness=0,
-                      troughcolor=t["surface"], length=140)
-        f2 = tk.Frame(win, bg=t["bg"]); f2.pack(fill="x", padx=14, pady=8)
-        tk.Label(f2, text="透明度", fg=t["text"], bg=t["bg"], font=(F, 9)).pack(side="left")
-        sc.pack(side="right")
-        self.theme_var = tk.StringVar(value=cfg["theme"])
-        row("主题", ttk.Combobox, textvariable=self.theme_var, values=list(THEMES.keys()), width=12, state="readonly")
-        self.range_var = tk.StringVar(value=cfg["default_range"])
-        row("默认范围", ttk.Combobox, textvariable=self.range_var, values=list(RANGES.keys()), width=12, state="readonly")
+        ctk.CTkSlider(c2, variable=self.alpha_var, from_=0.6, to=1.0, number_of_steps=8,
+                      button_color=t["mauve"], progress_color=t["card2"], width=140).pack(side="right", padx=12, pady=10)
 
-        bf = tk.Frame(win, bg=t["bg"]); bf.pack(pady=12)
-        tk.Button(bf, text="保存", command=self.save, bg=t["mauve"], fg=t["bg"], font=(F, 9, "bold"),
-                  padx=16, relief="flat").pack()
+        # 主题
+        c3 = card(win)
+        ctk.CTkLabel(c3, text="主题", fg_color="transparent", text_color=t["text"], font=(F, 10)).pack(side="left", padx=12, pady=10)
+        self.theme_var = tk.StringVar(value=cfg["theme"])
+        ctk.CTkOptionMenu(c3, variable=self.theme_var, values=list(THEMES.keys()),
+                          fg_color=t["card2"], button_color=t["mauve"], text_color=t["text"],
+                          width=120, height=26).pack(side="right", padx=12, pady=8)
+
+        # 默认范围
+        c4 = card(win)
+        ctk.CTkLabel(c4, text="默认范围", fg_color="transparent", text_color=t["text"], font=(F, 10)).pack(side="left", padx=12, pady=10)
+        self.range_var = tk.StringVar(value=cfg["default_range"])
+        ctk.CTkOptionMenu(c4, variable=self.range_var, values=list(RANGES.keys()),
+                          fg_color=t["card2"], button_color=t["mauve"], text_color=t["text"],
+                          width=120, height=26).pack(side="right", padx=12, pady=8)
+
+        tk.Button(win, text="保存", command=self.save, bg=t["mauve"], fg=t["win"],
+                  font=(F, 10, "bold"), padx=20, relief="flat").pack(pady=14)
 
     def save(self):
-        self.cfg["refresh_ms"] = self.refresh_var.get() * 1000
+        self.cfg["refresh_ms"] = int(self.refresh_var.get()) * 1000
         self.cfg["alpha"] = self.alpha_var.get()
         self.cfg["theme"] = self.theme_var.get()
         self.cfg["default_range"] = self.range_var.get()
@@ -335,62 +345,81 @@ class App:
         root.overrideredirect(True)
         root.wm_attributes("-topmost", True)
         root.wm_attributes("-alpha", cfg["alpha"])
-        root.configure(bg=self.theme["bg"])
+        root.configure(fg_color=self.theme["win"])
         sw = root.winfo_screenwidth()
         root.geometry(f"{cfg['win_w']}x{cfg['win_h']}+{sw-cfg['win_w']-20}+20")
         self._build_ui()
         self.refresh()
         self._schedule()
 
+    def _card(self, pady=(4, 4)):
+        t = self.theme
+        return ctk.CTkFrame(self.root, fg_color=t["card"], corner_radius=16,
+                            border_width=1, border_color=t["border"])
+
     def _build_ui(self):
         t = self.theme
         for w in self.root.winfo_children():
             w.destroy()
-        outer = tk.Frame(self.root, bg=t["surface"])
-        outer.pack(fill="both", expand=True)
-        self.body = tk.Frame(outer, bg=t["bg"])
-        self.body.pack(fill="both", expand=True, padx=1, pady=1)
+        self.root.configure(fg_color=t["win"])
 
-        hdr = tk.Frame(self.body, bg=t["bg"])
+        # 标题卡
+        hc = self._card((10, 4))
+        hc.pack(fill="x", padx=10, pady=(10, 4))
+        hdr = ctk.CTkFrame(hc, fg_color="transparent")
         hdr.pack(fill="x", padx=14, pady=(10, 2))
-        tk.Label(hdr, text="█ TokenTicker", fg=t["mauve"], bg=t["bg"], font=(F, 13, "bold")).pack(side="left")
-        self.clock = tk.Label(hdr, text="", fg=t["dim"], bg=t["bg"], font=(F, 9))
+        ctk.CTkLabel(hdr, text="█ TokenTicker", fg_color="transparent", text_color=t["mauve"],
+                     font=(F, 14, "bold")).pack(side="left")
+        self.clock = ctk.CTkLabel(hdr, text="", fg_color="transparent", text_color=t["dim"], font=(F, 9))
         self.clock.pack(side="right")
-        tk.Label(self.body, text=f"你的 AI 用量行情终端  ·  v{__version__}", fg=t["dim"], bg=t["bg"], font=(F, 7)).pack(fill="x", padx=14, pady=(0, 4))
+        ctk.CTkLabel(hc, text=f"你的 AI 用量行情终端  ·  v{__version__}", fg_color="transparent",
+                     text_color=t["dim"], font=(F, 7)).pack(fill="x", padx=14, pady=(0, 8))
 
-        self._sep(self.body, (4, 4))
-        self.today = UsageTable(self.body, t, "近24h", 13)
-        self._sep(self.body, (6, 0))
-        self.month = UsageTable(self.body, t, "本月", 12)
-        self._sep(self.body, (6, 0))
+        # 用量卡
+        uc = self._card((4, 4))
+        uc.pack(fill="x", padx=10, pady=4)
+        self.today = UsageTable(uc, t, "近24h", 13)
+        ctk.CTkFrame(uc, fg_color=t["border"], height=1).pack(fill="x", padx=14, pady=2)
+        self.month = UsageTable(uc, t, "本月", 12)
 
-        rbtn = tk.Frame(self.body, bg=t["bg"])
-        rbtn.pack(fill="x", padx=14, pady=(4, 0))
-        tk.Label(rbtn, text="花费 K 线", fg=t["dim"], bg=t["bg"], font=(F, 8, "bold")).pack(side="left")
+        # K 线卡
+        cc = self._card((4, 4))
+        cc.pack(fill="x", padx=10, pady=4)
+        rbtn = ctk.CTkFrame(cc, fg_color="transparent")
+        rbtn.pack(fill="x", padx=14, pady=(10, 0))
+        ctk.CTkLabel(rbtn, text="花费 K 线", fg_color="transparent", text_color=t["dim"],
+                     font=(F, 8, "bold")).pack(side="left")
         self.range_buttons = {}
         for key in RANGES:
             active = (key == self.range_key)
-            b = tk.Button(rbtn, text=RANGES[key]["label"], command=lambda k=key: self.set_range(k),
-                          bg=t["mauve"] if active else t["surface"], fg=t["bg"] if active else t["sub"],
-                          relief="flat", font=(F, 7, "bold"), padx=5, bd=0)
-            b.pack(side="right", padx=1)
+            b = ctk.CTkButton(rbtn, text=RANGES[key]["label"], command=lambda k=key: self.set_range(k),
+                              fg_color=t["mauve"] if active else t["card2"],
+                              text_color=t["win"] if active else t["sub"],
+                              hover_color=t["card2"], corner_radius=6,
+                              font=(F, 7, "bold"), width=32, height=20, border_width=0)
+            b.pack(side="right", padx=2)
             self.range_buttons[key] = b
-        self.chart = CandleChart(self.body, t)
-        self._sep(self.body, (6, 0))
-
-        self.api_label = tk.Label(self.body, text="", fg=t["dim"], bg=t["bg"], font=(F, 8), anchor="w")
-        self.api_label.pack(fill="x", padx=14, pady=(4, 0))
-        self.latest = tk.Label(self.body, text="", fg=t["dim"], bg=t["bg"], font=(F, 8), anchor="w")
-        self.latest.pack(fill="x", padx=14, pady=(2, 4))
-        leg = tk.Frame(self.body, bg=t["bg"])
+        self.chart = CandleChart(cc, t)
+        leg = ctk.CTkFrame(cc, fg_color="transparent")
         leg.pack(fill="x", padx=14, pady=(0, 8))
-        tk.Label(leg, text="█涨", fg=t["red"], bg=t["bg"], font=(F, 8)).pack(side="left")
-        tk.Label(leg, text="█跌", fg=t["green"], bg=t["bg"], font=(F, 8)).pack(side="left", padx=(4, 8))
-        tk.Label(leg, text="▢", fg=t["yellow"], bg=t["bg"], font=(F, 8)).pack(side="left")
-        tk.Label(leg, text="当前", fg=t["dim"], bg=t["bg"], font=(F, 8)).pack(side="left", padx=(2, 0))
+        ctk.CTkLabel(leg, text="█涨", fg_color="transparent", text_color=t["red"], font=(F, 8)).pack(side="left")
+        ctk.CTkLabel(leg, text="█跌", fg_color="transparent", text_color=t["green"], font=(F, 8)).pack(side="left", padx=(4, 10))
+        ctk.CTkLabel(leg, text="▢", fg_color="transparent", text_color=t["yellow"], font=(F, 8)).pack(side="left")
+        ctk.CTkLabel(leg, text="当前", fg_color="transparent", text_color=t["dim"], font=(F, 8)).pack(side="left", padx=(2, 0))
 
-        self.menu = tk.Menu(self.root, tearoff=0, bg=t["bg"], fg=t["text"], activebackground=t["surface"],
-                            activeforeground=t["text"], borderwidth=0)
+        # 底部卡
+        fc = self._card((4, 10))
+        fc.pack(fill="x", padx=10, pady=(4, 10))
+        self.api_label = ctk.CTkLabel(fc, text="", fg_color="transparent", text_color=t["dim"],
+                                      font=(F, 8), anchor="w")
+        self.api_label.pack(fill="x", padx=14, pady=(10, 0))
+        self.latest = ctk.CTkLabel(fc, text="", fg_color="transparent", text_color=t["dim"],
+                                   font=(F, 8), anchor="w")
+        self.latest.pack(fill="x", padx=14, pady=(2, 10))
+
+        # 菜单
+        self.menu = tk.Menu(self.root, tearoff=0, bg=t["card"], fg=t["text"],
+                            activebackground=t["card2"], activeforeground=t["text"], borderwidth=0)
         self.menu.add_command(label="立即刷新", command=self.refresh)
         self.menu.add_command(label="设置…", command=self.open_settings)
         self.menu.add_separator()
@@ -401,15 +430,13 @@ class App:
         self.root.bind_all("<Escape>", lambda e: self.root.destroy())
         self._sx = self._sy = self._ox = self._oy = 0
 
-    def _sep(self, parent, pady):
-        tk.Frame(parent, bg=self.theme["surface"], height=1).pack(fill="x", padx=14, pady=pady)
-
     def set_range(self, key):
         self.range_key = key
         t = self.theme
         for k, b in self.range_buttons.items():
             active = (k == key)
-            b.config(bg=t["mauve"] if active else t["surface"], fg=t["bg"] if active else t["sub"])
+            b.configure(fg_color=t["mauve"] if active else t["card2"],
+                        text_color=t["win"] if active else t["sub"])
         self.refresh()
 
     def open_settings(self):
@@ -437,20 +464,20 @@ class App:
         try:
             d = query(self.range_key)
         except Exception as e:
-            self.clock.config(text="出错")
-            self.latest.config(text=str(e)[:40])
+            self.clock.configure(text="出错")
+            self.latest.configure(text=str(e)[:40])
             return
         self.today.update(d["today"], d["today_rows"])
         self.month.update(d["month"], d["month_rows"])
         self.chart.update(d["candles"], d["range_key"])
         api = " · ".join(n for _, n in d["providers"]) if d["providers"] else ""
-        self.api_label.config(text="API: " + api if api else "")
+        self.api_label.configure(text="API: " + api if api else "")
         l = d["latest"]
         if l and l[0]:
-            self.latest.config(text=f"最近: {l[0]} · {l[1] or '?'}")
+            self.latest.configure(text=f"最近: {l[0]} · {l[1] or '?'}")
         elif l:
-            self.latest.config(text=f"最近: {l[1] or ''}")
-        self.clock.config(text=datetime.datetime.now().strftime("%H:%M:%S"))
+            self.latest.configure(text=f"最近: {l[1] or ''}")
+        self.clock.configure(text=datetime.datetime.now().strftime("%H:%M:%S"))
 
     def popup(self, e):
         self.menu.tk_popup(e.x_root, e.y_root)
@@ -468,7 +495,7 @@ def main():
         print(f"找不到 cc-switch.db: {DB}\n请先安装并运行 CC Switch(https://github.com/farion1231/cc-switch)。", file=sys.stderr)
         sys.exit(1)
     cfg = load_config()
-    root = tk.Tk()
+    root = ctk.CTk()
     App(root, cfg)
     root.mainloop()
 
