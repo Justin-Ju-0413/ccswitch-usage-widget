@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""TokenTicker v1.6.2 - 液态玻璃 + DWM Acrylic,字体最小 12pt"""
+"""TokenTicker v1.6.3 - 液态玻璃 + DWM Acrylic,字体最小 12pt"""
 import sqlite3, os, datetime, sys, json
 from collections import defaultdict
 import customtkinter as ctk

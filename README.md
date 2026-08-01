@@ -11,6 +11,7 @@
   <img src="https://img.shields.io/badge/Python-3.8+-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python" />
   <img src="https://img.shields.io/badge/Windows-0078D6?style=flat-square&logo=windows&logoColor=white" alt="Windows" />
   <img src="https://img.shields.io/badge/License-MIT-yellow?style=flat-square" alt="license" />
+  <a href="https://github.com/Justin-Ju-0413/ccswitch-usage-widget/actions/workflows/ci.yml"><img src="https://github.com/Justin-Ju-0413/ccswitch-usage-widget/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
 </p>
 
 桌面悬浮窗，把 [CC Switch](https://github.com/farion1231/cc-switch) 记录的 AI 用量做成**行情终端**：
@@ -68,6 +69,8 @@ python ccswitch_widget.py
 pyinstaller --onefile --noconsole --name TokenTicker --collect-all customtkinter ccswitch_widget.py
 ```
 
+维护者在 Windows 干净环境运行 `publish.ps1`，它会先测试、再打包，并生成 `dist/TokenTicker.exe.sha256`。脚本不会推送代码、移动标签或创建 GitHub Release。
+
 ### 开机自启（Windows）
 
 运行 `setup_autostart.ps1` 创建开机自启 + 桌面快捷方式：
@@ -114,6 +117,15 @@ powershell -ExecutionPolicy Bypass -File setup_autostart.ps1
 - 仅 Windows 测试通过（Segoe UI 字体；macOS / Linux 需改字体）
 - K 线 OHLC 基于单请求花费，值很小（0.00x 美元），幅度可能不大
 - 「近 24h」为滚动 24 小时，「本月」为自然月
+
+## 验证、升级与回退
+
+```bash
+python -m unittest discover -s tests -v
+python -m py_compile ccswitch_widget.py
+```
+
+升级前可备份 `~/.ccswitch-widget/settings.json`。回退时换回上一版源码或 EXE；设置文件和 CC Switch 数据库不在卸载范围内。TokenTicker 只读 CC Switch 数据库，但数据库 schema 由上游控制，上游大版升级后应先验证兼容性。
 
 ## 👤 关于开发者
 
