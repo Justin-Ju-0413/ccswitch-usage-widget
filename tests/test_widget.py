@@ -5,6 +5,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -25,7 +26,10 @@ class WidgetTests(unittest.TestCase):
     def test_query_reads_cc_switch_database_without_writing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             database = Path(temp_dir) / "cc-switch.db"
-            with sqlite3.connect(database) as connection:
+            # sqlite3.Connection's context manager commits/rolls back but does
+            # not close the handle. Windows refuses to delete the temporary
+            # database while that handle is still open.
+            with closing(sqlite3.connect(database)) as connection:
                 connection.executescript(
                     """
                     CREATE TABLE proxy_request_logs (
@@ -47,6 +51,7 @@ class WidgetTests(unittest.TestCase):
                     "INSERT INTO proxy_request_logs VALUES (?, 'claude', 'model-a', '0.5', 10, 20, 30, 40, 1)",
                     (now,),
                 )
+                connection.commit()
 
             with patch.object(widget, "DB", str(database)):
                 result = widget.query("24h")
@@ -54,7 +59,7 @@ class WidgetTests(unittest.TestCase):
             self.assertEqual(result["today"], (0.5, 100))
             self.assertEqual(result["providers"], [("claude", "Local")])
             self.assertEqual(result["latest"], ("Local", "model-a"))
-            with sqlite3.connect(database) as connection:
+            with closing(sqlite3.connect(database)) as connection:
                 self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone()[0], "ok")
 
 
