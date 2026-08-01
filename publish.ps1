@@ -1,18 +1,16 @@
-# CC Switch Usage Widget - publish to GitHub
-# Run from anywhere:  powershell -ExecutionPolicy Bypass -File C:\Users\GSTAR\dev\ccswitch-widget\publish.ps1
+# Build a local TokenTicker release candidate. This script never pushes or moves tags.
 $ErrorActionPreference = 'Stop'
-$gh = Join-Path $env:USERPROFILE 'dev\gh-bin\bin\gh.exe'
-if (-not (Test-Path $gh)) { Write-Error "gh not found: $gh"; exit 1 }
 Set-Location $PSScriptRoot
 
-Write-Host "=== 1. gh auth login (authorize in browser) ===" -ForegroundColor Cyan
-& $gh auth login
+python -m unittest discover -s tests -v
+python -m PyInstaller --clean --onefile --noconsole --name TokenTicker --collect-all customtkinter ccswitch_widget.py
 
-Write-Host "=== 2. create public repo and push ===" -ForegroundColor Cyan
-& $gh repo create ccswitch-usage-widget --public --source=. --push
+$artifact = Join-Path $PSScriptRoot 'dist\TokenTicker.exe'
+if (-not (Test-Path $artifact)) { throw "Missing build artifact: $artifact" }
+$hash = Get-FileHash $artifact -Algorithm SHA256
+$checksumPath = "$artifact.sha256"
+"$($hash.Hash.ToLower())  TokenTicker.exe" | Set-Content -Encoding ascii $checksumPath
 
-Write-Host "=== 3. push tag v1.1.0 ===" -ForegroundColor Cyan
-git push origin v1.1.0
-
-Write-Host "=== Done. Opening repo in browser... ===" -ForegroundColor Green
-& $gh repo view --web
+Write-Output "artifact = $artifact"
+Write-Output "sha256  = $($hash.Hash.ToLower())"
+Write-Output "Release remains local until tag and GitHub Release authorization is granted."
