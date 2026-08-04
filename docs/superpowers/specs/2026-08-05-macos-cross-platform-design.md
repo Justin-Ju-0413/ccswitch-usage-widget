@@ -72,7 +72,7 @@ tests/                   新增 platform_compat 测试
 
 `platform_compat.resolve_db_path(cfg)` 探测顺序：
 
-1. 配置 `db_path` 非空且文件存在 → 使用
+1. 配置 `db_path` 非空 → 使用（无条件优先，即使文件暂不存在）
 2. 解析 CC Switch 的 `~/.cc-switch/settings.json`，若含自定义配置目录且目录下有 `cc-switch.db` → 使用
 3. 默认 `~/.cc-switch/cc-switch.db`
 4. 均未命中 → 返回默认路径（启动报错逻辑不变，报错文案附上探测到的路径清单）
