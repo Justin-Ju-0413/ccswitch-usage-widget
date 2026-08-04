@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
+import os
 import sys
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 # 显式加载 tkinter.font 子模块：unittest.mock.patch("tkinter.font")
@@ -64,6 +68,46 @@ class ResolveFontTests(unittest.TestCase):
         with patch("tkinter.font") as mock_tkfont:
             mock_tkfont.families.return_value = []
             self.assertIsNone(pc.resolve_font(MagicMock()))
+
+
+class DbPathTests(unittest.TestCase):
+    def test_manual_db_path_takes_priority(self):
+        with patch.object(pc, "DEFAULT_CC_SWITCH_DIR", "/nonexistent/default"):
+            cfg = {"db_path": "/tmp/manual/cc-switch.db"}
+            self.assertEqual(pc.db_candidates(cfg)[0], "/tmp/manual/cc-switch.db")
+            self.assertEqual(pc.resolve_db_path(cfg, cc_switch_dir="/nonexistent/default"),
+                             "/tmp/manual/cc-switch.db")
+
+    def test_custom_dir_from_cc_switch_settings(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            cc_dir = home / ".cc-switch"
+            cc_dir.mkdir()
+            custom = home / "icloud-sync"
+            custom.mkdir()
+            (custom / "cc-switch.db").touch()
+            (cc_dir / "settings.json").write_text(
+                json.dumps({"customConfigDir": str(custom)}), encoding="utf-8")
+            result = pc.resolve_db_path({}, cc_switch_dir=str(cc_dir))
+            self.assertEqual(result, str(custom / "cc-switch.db"))
+
+    def test_default_path_when_no_override(self):
+        with patch.object(pc, "DEFAULT_CC_SWITCH_DIR", "/nonexistent/default"):
+            self.assertEqual(pc.resolve_db_path({}, cc_switch_dir="/nonexistent/default"),
+                             "/nonexistent/default/cc-switch.db")
+
+    def test_broken_settings_json_is_ignored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cc_dir = Path(tmp)
+            (cc_dir / "settings.json").write_text("{not json", encoding="utf-8")
+            result = pc.resolve_db_path({}, cc_switch_dir=str(cc_dir))
+            self.assertEqual(result, str(cc_dir / "cc-switch.db"))
+
+    def test_tilde_in_manual_path_is_expanded(self):
+        with patch.object(pc, "DEFAULT_CC_SWITCH_DIR", "/nonexistent/default"):
+            result = pc.resolve_db_path({"db_path": "~/my-db/cc-switch.db"},
+                                        cc_switch_dir="/nonexistent/default")
+            self.assertEqual(result, os.path.join(os.path.expanduser("~"), "my-db/cc-switch.db"))
 
 
 if __name__ == "__main__":
