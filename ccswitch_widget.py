@@ -149,6 +149,18 @@ def _lbl(parent, text, theme, key, font, width=None, anchor="w", color=None):
     return ctk.CTkLabel(parent, **kw)
 
 
+def apply_window_flags(root, effects, cfg, is_win=pc.is_windows()):
+    """按特效启用状态设置窗口透明相关属性。effects=True 表示毛玻璃/亚克力已启用。"""
+    if effects:
+        root.configure(fg_color=TRANSP)
+        if is_win:
+            root.wm_attributes("-transparentcolor", TRANSP)
+    else:
+        theme = THEMES[cfg["theme"]]
+        root.wm_attributes("-alpha", cfg["alpha"])
+        root.configure(fg_color=theme["win"])
+
+
 class UsageTable:
     def __init__(self, parent, theme, title, big_font=17):
         self.t = theme
@@ -358,22 +370,6 @@ class SettingsWindow:
         self.win.destroy()
 
 
-def try_acrylic(root):
-    try:
-        import ctypes
-        from ctypes import windll, byref, c_int, sizeof
-        root.update_idletasks()
-        hwnd = windll.user32.GetParent(root.winfo_id())
-        windll.dwmapi.DwmSetWindowAttribute(hwnd, 20, byref(c_int(1)), sizeof(c_int))
-        windll.dwmapi.DwmSetWindowAttribute(hwnd, 38, byref(c_int(1)), sizeof(c_int))
-        class MARGINS(ctypes.Structure):
-            _fields_ = [("cxLeftWidth", c_int), ("cxRightWidth", c_int), ("cyTopHeight", c_int), ("cyBottomHeight", c_int)]
-        windll.dwmapi.DwmExtendFrameIntoClientArea(hwnd, byref(MARGINS(-1, -1, -1, -1)))
-        return True
-    except Exception:
-        return False
-
-
 class App:
     def __init__(self, root, cfg):
         self.root = root
@@ -383,13 +379,10 @@ class App:
         self._after_id = None
         root.overrideredirect(True)
         root.wm_attributes("-topmost", True)
-        self.acrylic = try_acrylic(root)
-        if self.acrylic:
-            root.configure(fg_color=TRANSP)
-            root.wm_attributes("-transparentcolor", TRANSP)
-        else:
-            root.wm_attributes("-alpha", cfg["alpha"])
-            root.configure(fg_color=self.theme["win"])
+        if pc.is_macos():
+            pc.make_mac_panel(root)
+        self.acrylic = pc.apply_window_effects(root)
+        apply_window_flags(root, self.acrylic, cfg)
         sw = root.winfo_screenwidth()
         root.geometry(f"{cfg['win_w']}x{cfg['win_h']}+{sw-cfg['win_w']-20}+20")
         self._build_ui()
@@ -483,6 +476,7 @@ class App:
         SettingsWindow(self.root, self.cfg, self.theme, self.apply_config)
 
     def apply_config(self, new_cfg):
+        resolve_runtime(self.root, new_cfg)
         self.cfg = new_cfg
         self.theme = THEMES[new_cfg["theme"]]
         self.range_key = new_cfg["default_range"]
@@ -532,11 +526,18 @@ class App:
 
 
 def main():
-    if not os.path.exists(DB):
-        print(f"找不到 cc-switch.db: {DB}\n请先安装并运行 CC Switch(https://github.com/farion1231/cc-switch)。", file=sys.stderr)
-        sys.exit(1)
     cfg = load_config()
     root = ctk.CTk()
+    root.title("TokenTicker")
+    if pc.is_macos():
+        pc.make_mac_panel(root)
+    resolve_runtime(root, cfg)
+    if not os.path.exists(DB):
+        searched = "\n".join(pc.db_candidates(cfg))
+        print(f"找不到 cc-switch.db: {DB}\n已探测以下位置:\n{searched}\n"
+              "请先安装并运行 CC Switch(https://github.com/farion1231/cc-switch)。",
+              file=sys.stderr)
+        sys.exit(1)
     App(root, cfg)
     root.mainloop()
 

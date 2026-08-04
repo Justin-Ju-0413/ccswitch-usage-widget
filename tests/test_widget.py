@@ -84,5 +84,23 @@ class RuntimeResolutionTests(unittest.TestCase):
         self.assertEqual(widget.F, "Segoe UI")
 
 
+class WindowFlagTests(unittest.TestCase):
+    def setUp(self):
+        self.root = MagicMock()
+
+    def test_effects_on_windows_sets_transparentcolor(self):
+        widget.apply_window_flags(self.root, True, {}, is_win=True)
+        self.root.configure.assert_called_with(fg_color=widget.TRANSP)
+        self.root.wm_attributes.assert_called_with("-transparentcolor", widget.TRANSP)
+
+    def test_effects_on_macos_skips_transparentcolor(self):
+        widget.apply_window_flags(self.root, True, {}, is_win=False)
+        self.root.wm_attributes.assert_not_called()
+
+    def test_no_effects_sets_alpha_and_window_bg(self):
+        widget.apply_window_flags(self.root, False, {"alpha": 0.7, "theme": "Mocha"}, is_win=False)
+        self.root.wm_attributes.assert_called_with("-alpha", 0.7)
+
+
 if __name__ == "__main__":
     unittest.main()
