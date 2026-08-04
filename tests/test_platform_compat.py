@@ -110,5 +110,39 @@ class DbPathTests(unittest.TestCase):
             self.assertEqual(result, os.path.join(os.path.expanduser("~"), "my-db/cc-switch.db"))
 
 
+class WindowEffectTests(unittest.TestCase):
+    @patch.object(pc, "SYSTEM", "linux")
+    def test_mac_frost_skipped_on_linux(self):
+        self.assertFalse(pc.try_mac_frost(MagicMock()))
+
+    @patch.object(pc, "SYSTEM", "darwin")
+    def test_mac_frost_degrades_when_pyobjc_missing(self):
+        with patch("builtins.__import__", side_effect=ImportError("no pyobjc")):
+            self.assertFalse(pc.try_mac_frost(MagicMock()))
+
+    @patch.object(pc, "SYSTEM", "linux")
+    def test_mac_panel_skipped_on_linux(self):
+        self.assertFalse(pc.make_mac_panel(MagicMock()))
+
+    @patch.object(pc, "SYSTEM", "darwin")
+    def test_mac_panel_degrades_when_pyobjc_missing(self):
+        with patch("builtins.__import__", side_effect=ImportError("no pyobjc")):
+            self.assertFalse(pc.make_mac_panel(MagicMock()))
+
+    @patch.object(pc, "SYSTEM", "win32")
+    @patch.object(pc, "try_windows_acrylic", return_value=True)
+    def test_apply_effects_uses_acrylic_on_windows(self, mock_acrylic):
+        self.assertTrue(pc.apply_window_effects(MagicMock()))
+        mock_acrylic.assert_called_once()
+
+    @patch.object(pc, "SYSTEM", "linux")
+    @patch.object(pc, "try_windows_acrylic")
+    @patch.object(pc, "try_mac_frost")
+    def test_apply_effects_false_on_linux(self, mock_frost, mock_acrylic):
+        self.assertFalse(pc.apply_window_effects(MagicMock()))
+        mock_frost.assert_not_called()
+        mock_acrylic.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
