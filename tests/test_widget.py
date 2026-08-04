@@ -10,7 +10,13 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 sys.modules.setdefault("customtkinter", MagicMock())
-sys.modules.setdefault("tkinter", MagicMock())
+# 仅在真实 tkinter 不可用时 mock：若本机有 tkinter（如 brew python3.12），
+# 保留真实模块，否则同进程加载 tests.test_platform_compat 时其
+# `import tkinter.font` 会因 sys.modules 污染而失败。
+try:
+    import tkinter.font  # noqa: F401
+except ImportError:
+    sys.modules["tkinter"] = MagicMock()
 import ccswitch_widget as widget
 
 
@@ -61,6 +67,21 @@ class WidgetTests(unittest.TestCase):
             self.assertEqual(result["latest"], ("Local", "model-a"))
             with closing(sqlite3.connect(database)) as connection:
                 self.assertEqual(connection.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+
+
+class RuntimeResolutionTests(unittest.TestCase):
+    def test_resolve_runtime_updates_db_and_font(self):
+        with patch.object(widget.pc, "resolve_db_path", return_value="/tmp/x/cc-switch.db"), \
+             patch.object(widget.pc, "resolve_font", return_value="PingFang SC"):
+            widget.resolve_runtime(MagicMock(), {"db_path": "/tmp/x/cc-switch.db"})
+        self.assertEqual(widget.DB, "/tmp/x/cc-switch.db")
+        self.assertEqual(widget.F, "PingFang SC")
+
+    def test_resolve_runtime_keeps_default_font_when_unresolvable(self):
+        with patch.object(widget.pc, "resolve_db_path", return_value="/tmp/y/cc-switch.db"), \
+             patch.object(widget.pc, "resolve_font", return_value=None):
+            widget.resolve_runtime(MagicMock(), {})
+        self.assertEqual(widget.F, "Segoe UI")
 
 
 if __name__ == "__main__":
