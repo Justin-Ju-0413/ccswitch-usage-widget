@@ -297,7 +297,7 @@ class SettingsWindow:
         t = theme
         win = ctk.CTkToplevel(parent, fg_color=t["win"])
         win.title("TokenTicker 设置")
-        win.geometry("420x440")
+        win.geometry("420x500")
         win.transient(parent)
         win.wm_attributes("-topmost", True)
         win.lift()
@@ -349,15 +349,15 @@ class SettingsWindow:
                       text_color=t["text"], hover_color=t["border"], font=(F, 12),
                       width=70, height=30).pack(side="left", padx=(6, 0))
 
+        tk.Button(win, text="保存", command=self.save, bg=t["mauve"], fg=t["win"],
+                  font=(F, 13, "bold"), padx=24, relief="flat").pack(pady=18)
+
     def _pick_db(self):
         from tkinter import filedialog
         picked = filedialog.askopenfilename(parent=self.win, title="选择 cc-switch.db",
                                             filetypes=[("SQLite", "*.db"), ("All files", "*")])
         if picked:
             self.db_var.set(picked)
-
-        tk.Button(win, text="保存", command=self.save, bg=t["mauve"], fg=t["win"],
-                  font=(F, 13, "bold"), padx=24, relief="flat").pack(pady=18)
 
     def save(self):
         self.cfg["refresh_ms"] = int(self.refresh_var.get()) * 1000

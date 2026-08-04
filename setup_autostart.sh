@@ -63,6 +63,10 @@ cat >> "$PLIST_PATH" <<PLIST
 PLIST
 
 plutil -lint "$PLIST_PATH" >/dev/null
+if launchctl list 2>/dev/null | grep -q "$LABEL"; then
+    echo "已安装: $PLIST_PATH (先运行 --uninstall 再重装可刷新程序路径)"
+    exit 0
+fi
 launchctl load "$PLIST_PATH"
 echo "已安装开机自启: $PLIST_PATH"
 echo "程序: $PROGRAM"

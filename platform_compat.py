@@ -128,7 +128,7 @@ def try_mac_frost(root):
         return False
 
 
-def make_mac_panel(root, title=None):
+def make_mac_panel(root):
     """将 macOS 无边框窗口提升为可交互的浮动 NSPanel；失败返回 False。"""
     if not is_macos():
         return False
