@@ -56,3 +56,41 @@ jobs:
             dist/TokenTicker.exe.sha256
           if-no-files-found: error
           retention-days: 7
+
+  verify-macos:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python3 -m pip install -r requirements.txt
+      - run: python3 -m unittest discover -s tests -v
+      - run: python3 -m py_compile ccswitch_widget.py platform_compat.py
+      - name: Parse shell scripts
+        run: |
+          for f in setup_autostart.sh publish_mac.sh; do
+            bash -n "$f"
+          done
+
+  package-smoke-macos:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python3 -m pip install -r requirements.txt pyinstaller
+      - run: ./publish_mac.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TokenTicker-macos-candidate
+          path: |
+            dist/TokenTicker.app
+            dist/TokenTicker.app.sha256
+          if-no-files-found: error
+          retention-days: 7
