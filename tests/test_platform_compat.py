@@ -95,7 +95,7 @@ class DbPathTests(unittest.TestCase):
     def test_default_path_when_no_override(self):
         with patch.object(pc, "DEFAULT_CC_SWITCH_DIR", "/nonexistent/default"):
             self.assertEqual(pc.resolve_db_path({}, cc_switch_dir="/nonexistent/default"),
-                             "/nonexistent/default/cc-switch.db")
+                             os.path.join("/nonexistent/default", "cc-switch.db"))
 
     def test_broken_settings_json_is_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:
