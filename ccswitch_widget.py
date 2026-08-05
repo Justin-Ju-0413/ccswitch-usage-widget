@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""TokenTicker v1.6.3 - 液态玻璃 + DWM Acrylic,字体最小 12pt"""
+"""TokenTicker v1.7.0 - 跨平台:字体自适应 + macOS 毛玻璃/NSPanel + DB 路径探测"""
 import sqlite3, os, datetime, sys, json
 from collections import defaultdict
 import customtkinter as ctk
 import tkinter as tk
 import platform_compat as pc
 
-__version__ = "1.6.3"
+__version__ = "1.7.0"
 ctk.set_appearance_mode("dark")
 
 DB = os.path.expanduser("~/.cc-switch/cc-switch.db")
