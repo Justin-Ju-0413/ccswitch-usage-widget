@@ -4,6 +4,7 @@ import sqlite3, os, datetime, sys, json
 from collections import defaultdict
 import customtkinter as ctk
 import tkinter as tk
+import platform_compat as pc
 
 __version__ = "1.6.3"
 ctk.set_appearance_mode("dark")
@@ -54,6 +55,16 @@ def save_config(cfg):
     os.makedirs(CONFIG_DIR, exist_ok=True)
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(cfg, f, ensure_ascii=False, indent=2)
+
+
+def resolve_runtime(root, cfg):
+    """将模块级 DB/F 更新为当前平台与配置的解析结果；返回 DB 路径。"""
+    global DB, F
+    DB = pc.resolve_db_path(cfg)
+    font = pc.resolve_font(root)
+    if font:
+        F = font
+    return DB
 
 
 def fmt_tok(n):
@@ -136,6 +147,18 @@ def _lbl(parent, text, theme, key, font, width=None, anchor="w", color=None):
     if width is not None:
         kw["width"] = width
     return ctk.CTkLabel(parent, **kw)
+
+
+def apply_window_flags(root, effects, cfg, is_win=pc.is_windows()):
+    """按特效启用状态设置窗口透明相关属性。effects=True 表示毛玻璃/亚克力已启用。"""
+    if effects:
+        root.configure(fg_color=TRANSP)
+        if is_win:
+            root.wm_attributes("-transparentcolor", TRANSP)
+    else:
+        theme = THEMES[cfg["theme"]]
+        root.wm_attributes("-alpha", cfg["alpha"])
+        root.configure(fg_color=theme["win"])
 
 
 class UsageTable:
@@ -274,7 +297,7 @@ class SettingsWindow:
         t = theme
         win = ctk.CTkToplevel(parent, fg_color=t["win"])
         win.title("TokenTicker 设置")
-        win.geometry("420x440")
+        win.geometry("420x500")
         win.transient(parent)
         win.wm_attributes("-topmost", True)
         win.lift()
@@ -315,33 +338,36 @@ class SettingsWindow:
                           fg_color=t["card2"], button_color=t["mauve"], text_color=t["text"],
                           width=140, height=30, font=(F, 12)).pack(side="right", padx=16, pady=12)
 
+        c5 = card(win)
+        ctk.CTkLabel(c5, text="数据库路径", fg_color="transparent", text_color=t["text"], font=(F, 13)).pack(side="left", padx=16, pady=14)
+        self.db_var = tk.StringVar(value=cfg.get("db_path", ""))
+        db_row = ctk.CTkFrame(c5, fg_color="transparent")
+        db_row.pack(side="right", padx=16, pady=10)
+        ctk.CTkEntry(db_row, textvariable=self.db_var, fg_color=t["card2"], text_color=t["text"],
+                     border_color=t["border"], width=200, height=30, font=(F, 12)).pack(side="left")
+        ctk.CTkButton(db_row, text="浏览…", command=self._pick_db, fg_color=t["card2"],
+                      text_color=t["text"], hover_color=t["border"], font=(F, 12),
+                      width=70, height=30).pack(side="left", padx=(6, 0))
+
         tk.Button(win, text="保存", command=self.save, bg=t["mauve"], fg=t["win"],
                   font=(F, 13, "bold"), padx=24, relief="flat").pack(pady=18)
+
+    def _pick_db(self):
+        from tkinter import filedialog
+        picked = filedialog.askopenfilename(parent=self.win, title="选择 cc-switch.db",
+                                            filetypes=[("SQLite", "*.db"), ("All files", "*")])
+        if picked:
+            self.db_var.set(picked)
 
     def save(self):
         self.cfg["refresh_ms"] = int(self.refresh_var.get()) * 1000
         self.cfg["alpha"] = self.alpha_var.get()
         self.cfg["theme"] = self.theme_var.get()
         self.cfg["default_range"] = self.range_var.get()
+        self.cfg["db_path"] = self.db_var.get().strip() or None
         save_config(self.cfg)
         self.on_apply(self.cfg)
         self.win.destroy()
-
-
-def try_acrylic(root):
-    try:
-        import ctypes
-        from ctypes import windll, byref, c_int, sizeof
-        root.update_idletasks()
-        hwnd = windll.user32.GetParent(root.winfo_id())
-        windll.dwmapi.DwmSetWindowAttribute(hwnd, 20, byref(c_int(1)), sizeof(c_int))
-        windll.dwmapi.DwmSetWindowAttribute(hwnd, 38, byref(c_int(1)), sizeof(c_int))
-        class MARGINS(ctypes.Structure):
-            _fields_ = [("cxLeftWidth", c_int), ("cxRightWidth", c_int), ("cyTopHeight", c_int), ("cyBottomHeight", c_int)]
-        windll.dwmapi.DwmExtendFrameIntoClientArea(hwnd, byref(MARGINS(-1, -1, -1, -1)))
-        return True
-    except Exception:
-        return False
 
 
 class App:
@@ -353,13 +379,10 @@ class App:
         self._after_id = None
         root.overrideredirect(True)
         root.wm_attributes("-topmost", True)
-        self.acrylic = try_acrylic(root)
-        if self.acrylic:
-            root.configure(fg_color=TRANSP)
-            root.wm_attributes("-transparentcolor", TRANSP)
-        else:
-            root.wm_attributes("-alpha", cfg["alpha"])
-            root.configure(fg_color=self.theme["win"])
+        if pc.is_macos():
+            pc.make_mac_panel(root)
+        self.acrylic = pc.apply_window_effects(root)
+        apply_window_flags(root, self.acrylic, cfg)
         sw = root.winfo_screenwidth()
         root.geometry(f"{cfg['win_w']}x{cfg['win_h']}+{sw-cfg['win_w']-20}+20")
         self._build_ui()
@@ -453,6 +476,7 @@ class App:
         SettingsWindow(self.root, self.cfg, self.theme, self.apply_config)
 
     def apply_config(self, new_cfg):
+        resolve_runtime(self.root, new_cfg)
         self.cfg = new_cfg
         self.theme = THEMES[new_cfg["theme"]]
         self.range_key = new_cfg["default_range"]
@@ -502,11 +526,18 @@ class App:
 
 
 def main():
-    if not os.path.exists(DB):
-        print(f"找不到 cc-switch.db: {DB}\n请先安装并运行 CC Switch(https://github.com/farion1231/cc-switch)。", file=sys.stderr)
-        sys.exit(1)
     cfg = load_config()
     root = ctk.CTk()
+    root.title("TokenTicker")
+    if pc.is_macos():
+        pc.make_mac_panel(root)
+    resolve_runtime(root, cfg)
+    if not os.path.exists(DB):
+        searched = "\n".join(pc.db_candidates(cfg))
+        print(f"找不到 cc-switch.db: {DB}\n已探测以下位置:\n{searched}\n"
+              "请先安装并运行 CC Switch(https://github.com/farion1231/cc-switch)。",
+              file=sys.stderr)
+        sys.exit(1)
     App(root, cfg)
     root.mainloop()
 

@@ -44,7 +44,15 @@ A desktop floating widget that turns the AI usage recorded by [CC Switch](https:
 
 ### 前置要求
 - 已安装并运行 [CC Switch](https://github.com/farion1231/cc-switch) **v3.13+**
-- Python 3.8+
+- Python 3.8+(macOS 建议 Python 3.12 + Tk)
+
+### macOS 可选毛玻璃
+
+```bash
+pip install pyobjc-framework-Cocoa
+```
+
+未安装时窗口自动使用半透明效果,功能不受影响。
 
 ### 运行
 
@@ -61,12 +69,29 @@ pyinstaller --onefile --noconsole --name TokenTicker --collect-all customtkinter
 
 维护者在 Windows 干净环境运行 `publish.ps1`,它会先测试、再打包,并生成 `dist/TokenTicker.exe.sha256`。脚本不会推送代码、移动标签或创建 GitHub Release。
 
+### 打包成 app(macOS,可选)
+
+```bash
+./publish_mac.sh
+```
+
+输出 `dist/TokenTicker.app` 与校验和;脚本不会推送代码或创建 GitHub Release。
+
 ### 开机自启(Windows)
 
 运行 `setup_autostart.ps1` 创建开机自启 + 桌面快捷方式:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File setup_autostart.ps1
+```
+
+### 开机自启(macOS)
+
+运行 `setup_autostart.sh` 安装 LaunchAgent:
+
+```bash
+./setup_autostart.sh          # 安装
+./setup_autostart.sh --uninstall  # 卸载
 ```
 
 ## Operation / 操作指南
@@ -105,7 +130,7 @@ powershell -ExecutionPolicy Bypass -File setup_autostart.ps1
 
 ## Known limits / 已知限制
 
-- 仅 Windows 测试通过(Segoe UI 字体;macOS / Linux 需改字体)
+- Windows / macOS 均支持(macOS 需 macOS 12+;毛玻璃需 `pip install pyobjc-framework-Cocoa`,未安装自动降级半透明)
 - K 线 OHLC 基于单请求花费,值很小(0.00x 美元),幅度可能不大
 - 「近 24h」为滚动 24 小时,「本月」为自然月
 
