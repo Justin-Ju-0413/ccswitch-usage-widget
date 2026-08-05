@@ -108,7 +108,7 @@ class DbPathTests(unittest.TestCase):
         with patch.object(pc, "DEFAULT_CC_SWITCH_DIR", "/nonexistent/default"):
             result = pc.resolve_db_path({"db_path": "~/my-db/cc-switch.db"},
                                         cc_switch_dir="/nonexistent/default")
-            self.assertEqual(result, os.path.join(os.path.expanduser("~"), "my-db/cc-switch.db"))
+            self.assertEqual(result, os.path.expanduser("~/my-db/cc-switch.db"))
 
 
 class WindowEffectTests(unittest.TestCase):
