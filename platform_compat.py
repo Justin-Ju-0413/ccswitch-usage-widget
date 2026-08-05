@@ -102,27 +102,45 @@ def try_windows_acrylic(root):
         return False
 
 
+def _find_ns_window(root, appkit):
+    """按 title 在 NSApp().windows() 中查找对应 NSWindow。
+
+    注意：Tk 9 上 winfo_id() 不能直接当作 NSView 指针用（会段错误），
+    因此改为遍历 NSApp 窗口按 title 匹配。root.title() 为空时回退到
+    第一个可见窗口。
+    """
+    title = root.title()
+    windows = appkit.NSApp().windows()
+    if title:
+        for w in windows:
+            if w.title() == title:
+                return w
+        return None
+    for w in windows:
+        if w.isVisible():
+            return w
+    return None
+
+
 def try_mac_frost(root):
-    """macOS 毛玻璃（NSVisualEffectView，可选 pyobjc）；失败静默返回 False。"""
+    """macOS 毛玻璃（NSVisualEffectView via AppKit，可选 pyobjc）；失败静默返回 False。"""
     if not is_macos():
         return False
     try:
-        from ctypes import c_void_p
-        import objc
-        from Cocoa import (NSVisualEffectView, NSVisualEffectMaterialHudWindow,
-                           NSVisualEffectBlendingModeBehindWindow,
-                           NSVisualEffectStateActive, NSViewWidthSizable,
-                           NSViewHeightSizable)
+        import AppKit
     except Exception:
         return False
     try:
-        ns_view = objc.objc_object(c_void_p=root.winfo_id())
-        effect = NSVisualEffectView.alloc().initWithFrame_(ns_view.bounds())
-        effect.setMaterial_(NSVisualEffectMaterialHudWindow)
-        effect.setBlendingMode_(NSVisualEffectBlendingModeBehindWindow)
-        effect.setState_(NSVisualEffectStateActive)
-        effect.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
-        ns_view.addSubview_positioned_relativeTo_(effect, objc.NSWindowAbove, None)
+        target = _find_ns_window(root, AppKit)
+        if target is None:
+            return False
+        cv = target.contentView()
+        effect = AppKit.NSVisualEffectView.alloc().initWithFrame_(cv.bounds())
+        effect.setMaterial_(AppKit.NSVisualEffectMaterialHUDWindow)
+        effect.setBlendingMode_(AppKit.NSVisualEffectBlendingModeBehindWindow)
+        effect.setState_(AppKit.NSVisualEffectStateActive)
+        effect.setAutoresizingMask_(AppKit.NSViewWidthSizable | AppKit.NSViewHeightSizable)
+        cv.addSubview_positioned_relativeTo_(effect, AppKit.NSWindowAbove, None)
         return True
     except Exception:
         return False
@@ -133,25 +151,16 @@ def make_mac_panel(root):
     if not is_macos():
         return False
     try:
-        import objc
-        from ctypes import c_void_p
-        from Cocoa import (NSApp, NSFloatingWindowLevel,
-                           NSWindowCollectionBehaviorCanJoinAllSpaces)
+        import AppKit
     except Exception:
         return False
     try:
-        win_id = root.winfo_id()
-        target = None
-        for window in NSApp().windows():
-            if window.contentView() is not None and \
-               int(window.contentView().self()) == int(win_id):
-                target = window
-                break
+        target = _find_ns_window(root, AppKit)
         if target is None:
             return False
-        target.setLevel_(NSFloatingWindowLevel)
+        target.setLevel_(AppKit.NSFloatingWindowLevel)
         target.setCollectionBehavior_(target.collectionBehavior() |
-                                      NSWindowCollectionBehaviorCanJoinAllSpaces)
+                                      AppKit.NSWindowCollectionBehaviorCanJoinAllSpaces)
         target.makeKeyAndOrderFront_(None)
         return True
     except Exception:

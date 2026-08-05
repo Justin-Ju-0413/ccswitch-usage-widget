@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 # 显式加载 tkinter.font 子模块：unittest.mock.patch("tkinter.font")
@@ -141,6 +143,127 @@ class WindowEffectTests(unittest.TestCase):
         self.assertFalse(pc.apply_window_effects(MagicMock()))
         mock_frost.assert_not_called()
         mock_acrylic.assert_not_called()
+
+
+def _fake_appkit(window=None, **constants):
+    """构造可注入 sys.modules 的 fake AppKit 模块。
+
+    try_mac_frost / make_mac_panel 内部执行 `import AppKit`，会命中
+    sys.modules 中已注入的 fake（CI Windows runner 无 pyobjc，不能真 import）。
+    """
+    defaults = {
+        "NSVisualEffectMaterialHUDWindow": 13,
+        "NSVisualEffectBlendingModeBehindWindow": 0,
+        "NSVisualEffectStateActive": 1,
+        "NSViewWidthSizable": 2,
+        "NSViewHeightSizable": 16,
+        "NSWindowAbove": 1,
+        "NSFloatingWindowLevel": 3,
+        "NSWindowCollectionBehaviorCanJoinAllSpaces": 1,
+    }
+    defaults.update(constants)
+    app = SimpleNamespace(**defaults)
+    app.NSApp = MagicMock(return_value=SimpleNamespace(
+        windows=lambda: [window] if window else []))
+    app.NSVisualEffectView = MagicMock()
+    return app
+
+
+def _fake_window(title="TokenTicker", visible=True):
+    win = MagicMock()
+    win.title.return_value = title
+    win.isVisible.return_value = visible
+    win.contentView.return_value = MagicMock()
+    win.collectionBehavior.return_value = 0
+    return win
+
+
+class MacFrostAppKitTests(unittest.TestCase):
+    @patch.object(pc, "SYSTEM", "darwin")
+    def test_mac_frost_adds_effect_view_when_window_found(self):
+        win = _fake_window()
+        appkit = _fake_appkit(win)
+        effect = appkit.NSVisualEffectView.alloc.return_value.initWithFrame_.return_value
+        root = MagicMock()
+        root.title.return_value = "TokenTicker"
+        with patch.dict(sys.modules, {"AppKit": appkit}):
+            self.assertTrue(pc.try_mac_frost(root))
+        effect.setMaterial_.assert_called_once_with(13)
+        effect.setBlendingMode_.assert_called_once_with(0)
+        effect.setState_.assert_called_once_with(1)
+        effect.setAutoresizingMask_.assert_called_once_with(2 | 16)
+        win.contentView().addSubview_positioned_relativeTo_.assert_called_once_with(
+            effect, 1, None)
+
+    @patch.object(pc, "SYSTEM", "darwin")
+    def test_mac_frost_false_when_window_not_found(self):
+        appkit = _fake_appkit(None)
+        root = MagicMock()
+        root.title.return_value = "TokenTicker"
+        with patch.dict(sys.modules, {"AppKit": appkit}):
+            self.assertFalse(pc.try_mac_frost(root))
+
+    @patch.object(pc, "SYSTEM", "darwin")
+    def test_mac_frost_matches_first_visible_when_title_empty(self):
+        win = _fake_window(title="other", visible=True)
+        appkit = _fake_appkit(win)
+        root = MagicMock()
+        root.title.return_value = ""
+        with patch.dict(sys.modules, {"AppKit": appkit}):
+            self.assertTrue(pc.try_mac_frost(root))
+
+    @patch.object(pc, "SYSTEM", "darwin")
+    def test_mac_frost_false_when_no_visible_window_and_title_empty(self):
+        win = _fake_window(title="other", visible=False)
+        appkit = _fake_appkit(win)
+        root = MagicMock()
+        root.title.return_value = ""
+        with patch.dict(sys.modules, {"AppKit": appkit}):
+            self.assertFalse(pc.try_mac_frost(root))
+
+    @patch.object(pc, "SYSTEM", "darwin")
+    def test_mac_frost_false_when_effect_fails(self):
+        win = _fake_window()
+        appkit = _fake_appkit(win)
+        effect = appkit.NSVisualEffectView.alloc.return_value.initWithFrame_.return_value
+        effect.setMaterial_.side_effect = Exception("boom")
+        root = MagicMock()
+        root.title.return_value = "TokenTicker"
+        with patch.dict(sys.modules, {"AppKit": appkit}):
+            self.assertFalse(pc.try_mac_frost(root))
+
+
+class MacPanelAppKitTests(unittest.TestCase):
+    @patch.object(pc, "SYSTEM", "darwin")
+    def test_mac_panel_sets_floating_level_and_behavior(self):
+        win = _fake_window()
+        win.collectionBehavior.return_value = 8
+        appkit = _fake_appkit(win)
+        root = MagicMock()
+        root.title.return_value = "TokenTicker"
+        with patch.dict(sys.modules, {"AppKit": appkit}):
+            self.assertTrue(pc.make_mac_panel(root))
+        win.setLevel_.assert_called_once_with(3)
+        win.setCollectionBehavior_.assert_called_once_with(8 | 1)
+        win.makeKeyAndOrderFront_.assert_called_once_with(None)
+
+    @patch.object(pc, "SYSTEM", "darwin")
+    def test_mac_panel_false_when_window_not_found(self):
+        appkit = _fake_appkit(None)
+        root = MagicMock()
+        root.title.return_value = "TokenTicker"
+        with patch.dict(sys.modules, {"AppKit": appkit}):
+            self.assertFalse(pc.make_mac_panel(root))
+
+    @patch.object(pc, "SYSTEM", "darwin")
+    def test_mac_panel_false_when_set_level_fails(self):
+        win = _fake_window()
+        appkit = _fake_appkit(win)
+        win.setLevel_.side_effect = Exception("boom")
+        root = MagicMock()
+        root.title.return_value = "TokenTicker"
+        with patch.dict(sys.modules, {"AppKit": appkit}):
+            self.assertFalse(pc.make_mac_panel(root))
 
 
 if __name__ == "__main__":
